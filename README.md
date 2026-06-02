@@ -9,13 +9,25 @@ Admin generates QR → student scans → Google login → attendance written to 
 
 ```
 attendance_website/
-├── server.js               # main app — routes, auth, sheets logic
+├── server.js               # app entry — express setup, passport, listen
+├── config.js               # loads all secrets from .env
+├── settings.js             # behavior toggles (token timing, auth mode, geo-fencing)
+├── slots.js                # attendance slot definitions — edit for each event
 ├── setup.js                # one-time TOTP secret generator
 ├── package.json
 ├── .env                    # secrets (never commit)
 ├── .env.example            # template — commit this
 ├── credentials.json        # Google service account key (never commit)
-├── o_auth_credentials.json # OAuth client credentials (never commit)
+├── routes/
+│   ├── auth.js             # Google OAuth + /attend + /logout
+│   ├── admin.js            # admin login/logout/slots/token routes
+│   └── attendance.js       # /attendance page, /me, /submit
+├── middleware/
+│   └── auth.js             # requireLogin, requireAdmin
+├── services/
+│   ├── token.js            # QR token state — generate, validate, rotate
+│   ├── sheets.js           # Google Sheets read/write helpers
+│   └── geofence.js         # haversine distance + venue proximity check
 └── public/
     ├── index.html          # landing / admin login page
     ├── admin.html          # admin panel (QR display + slot picker)
@@ -28,27 +40,45 @@ attendance_website/
 
 ## Prerequisites
 
-- Node.js v20.6+ (uses built-in `--env-file` flag)
-- `node_modules/` already present (or restore: `npm install`)
-- `.env` file configured (copy from `.env.example`)
-- `credentials.json` — Google service account key file
-- `o_auth_credentials.json` — Google OAuth client credentials
+- Node.js v20.6+ (uses built-in `--env-file` flag, no dotenv needed)
+- `node_modules/` present (or restore: `npm install`)
+- `.env` configured (copy from `.env.example`)
+- `credentials.json` — Google service account JSON key file
 
 ---
 
 ## Setup
 
-### 1. Configure environment
+### 1. Configure secrets
 ```bash
 cp .env.example .env
 # edit .env with your values
 ```
 
-### 2. (First time) Generate TOTP secret
+### 2. Configure behavior (optional)
+
+Edit `settings.js` — safe to commit, no secrets here:
+
+```js
+tokenValidityMs:     60 * 1000,   // QR code lifespan
+tokenGracePeriodMs:  30 * 1000,   // overlap window after rotation
+usePasswordFallback: true,         // true = password login, false = TOTP
+geofencingEnabled:   false,        // enable to restrict by location
+```
+
+### 3. Configure slots
+
+Edit `slots.js` — one entry per session:
+```js
+{ label: '09/03 — Morning', sheet: '09/03 morning' },
+```
+`label` → shown in admin UI. `sheet` → Google Sheets tab name (auto-created).
+
+### 4. (First time, TOTP mode only) Generate TOTP secret
 ```bash
 node setup.js
-# saves secret, prints QR — scan with Google Authenticator
-# copy TOTP_SECRET output into .env
+# prints QR code — scan with Google Authenticator
+# copy TOTP_SECRET value into .env
 ```
 
 ---
@@ -57,7 +87,7 @@ node setup.js
 
 ```bash
 node --env-file=.env server.js
-# or via npm:
+# or:
 npm start
 ```
 
@@ -68,17 +98,15 @@ Server runs at `http://localhost:3000`
 ## Access the Website
 
 ### Production
-Please tunnel your localhost hosted on 3000 port to your production website using tunnel
-Visit: `https://isea.rathanappana.com`
+Tunnel localhost:3000 to your domain, then visit: `https://isea.rathanappana.com`
 
 ### Local / SSH Testing — Port Forwarding
 
-Run this on your **local machine** (not on the server):
+Run on your **local machine**:
 ```bash
 ssh -L 3000:localhost:3000 user@your-server-ip
 ```
-Then open `http://localhost:3000` in your local browser.
-The tunnel forwards local port 3000 → server port 3000 over SSH.
+Then open `http://localhost:3000` in local browser.
 
 ### Quick API check (from SSH session)
 ```bash
@@ -90,9 +118,25 @@ curl http://localhost:3000/admin/login-mode
 ## Admin Login
 
 1. Go to `http://localhost:3000` → click Admin
-2. **Password mode** (`USE_PASSWORD_FALLBACK=true`): enter `ADMIN_PASSWORD` from `.env`
-3. **TOTP mode** (`USE_PASSWORD_FALLBACK=false`): enter 6-digit code from Authenticator app
-4. Pick slot → QR appears → students scan
+2. **Password mode** (`usePasswordFallback: true` in `settings.js`): enter `ADMIN_PASSWORD` from `.env`
+3. **TOTP mode** (`usePasswordFallback: false`): enter 6-digit code from Authenticator app
+4. Pick a slot → QR appears → students scan
+
+---
+
+## Geo-Fencing (optional)
+
+Set in `settings.js`:
+```js
+geofencingEnabled: true,
+geofencing: {
+  latitude:     17.4458,
+  longitude:    78.3523,
+  radiusMeters: 200,
+},
+```
+When enabled, `/submit` rejects requests from outside the radius.
+Frontend (`attendance.html`) must send `lat` + `lng` via `navigator.geolocation` in the POST body.
 
 ---
 
@@ -100,31 +144,30 @@ curl http://localhost:3000/admin/login-mode
 
 ### 1. Copy files to server
 ```bash
-rsync -av --exclude='node_modules' --exclude='.env' \
+rsync -av --exclude='node_modules' --exclude='.env' --exclude='credentials.json' \
   . user@server:/path/to/attendance_website/
 ```
 
-### 2. On server — install dependencies
+### 2. Install dependencies on server
 ```bash
 cd /path/to/attendance_website
 npm install
 ```
 
-### 3. Copy secrets (do NOT git commit these)
+### 3. Copy secrets (never commit these)
 ```bash
-scp .env credentials.json o_auth_credentials.json user@server:/path/to/attendance_website/
+scp .env credentials.json user@server:/path/to/attendance_website/
 ```
 
-### 4. Run with process manager (keep alive after SSH logout)
+### 4. Run with process manager (survives SSH logout + reboots)
 ```bash
-# using pm2
 npm install -g pm2
 pm2 start "node --env-file=.env server.js" --name attendance
 pm2 save
-pm2 startup   # auto-start on reboot
+pm2 startup
 ```
 
-### 5. Nginx reverse proxy (serve on port 80/443)
+### 5. Nginx reverse proxy
 ```nginx
 server {
     server_name isea.rathanappana.com;
