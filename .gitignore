@@ -1,0 +1,9 @@
+node_modules/
+
+# secrets — never commit
+.env
+credentials.json
+o_auth_credentials.json
+
+# generated
+totp-setup-qr.png

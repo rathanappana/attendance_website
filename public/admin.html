@@ -1,0 +1,192 @@
+/* we aren't using this */
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin — QR Display</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0f; --card: #111118; --border: rgba(255,255,255,0.07);
+      --accent: #c8f135; --accent-dim: rgba(200,241,53,0.12); --text: #f0f0f0; --muted: #6b6b80;
+    }
+    body { font-family: 'DM Mono', monospace; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    body::before {
+      content: ''; position: fixed; inset: 0;
+      background-image: linear-gradient(rgba(200,241,53,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(200,241,53,0.03) 1px, transparent 1px);
+      background-size: 40px 40px; animation: gridMove 20s linear infinite; pointer-events: none;
+    }
+    @keyframes gridMove { 0% { transform: translateY(0); } 100% { transform: translateY(40px); } }
+
+    /* ── LOGIN SCREEN ── */
+    #loginScreen { width: 100%; max-width: 380px; padding: 20px; animation: slideUp 0.5s ease both; z-index: 1; }
+    @keyframes slideUp { from { opacity:0; transform: translateY(20px); } to { opacity:1; transform: translateY(0); } }
+    .login-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; position: relative; overflow: hidden; }
+    .login-card::before { content: ''; position: absolute; top:0; left:0; right:0; height:1px; background: linear-gradient(90deg,transparent,rgba(200,241,53,0.3),transparent); }
+    .login-title { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; margin-bottom: 6px; }
+    .login-title span { color: var(--accent); }
+    .login-sub { color: var(--muted); font-size: 12px; margin-bottom: 24px; }
+    label { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    input[type=password] {
+      width: 100%; background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 16px; color: var(--text);
+      font-family: 'DM Mono', monospace; font-size: 14px; outline: none; transition: all 0.2s;
+    }
+    input[type=password]:focus { border-color: rgba(200,241,53,0.4); box-shadow: 0 0 0 3px rgba(200,241,53,0.06); }
+    .login-btn {
+      width: 100%; background: var(--accent); color: #0a0a0f; border: none; border-radius: 8px;
+      padding: 13px; font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700;
+      cursor: pointer; margin-top: 16px; transition: all 0.2s;
+    }
+    .login-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(200,241,53,0.3); }
+    .login-error { color: #ff5e5e; font-size: 12px; margin-top: 12px; display: none; }
+
+    /* ── QR SCREEN ── */
+    #qrScreen { display: none; width: 100%; max-width: 480px; padding: 20px; text-align: center; z-index: 1; }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; background: var(--accent-dim); border: 1px solid rgba(200,241,53,0.2); color: var(--accent); font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 12px; border-radius: 100px; }
+    .badge::before { content: ''; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; animation: blink 1.5s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
+    .logout-btn { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); background: none; border: 1px solid var(--border); padding: 5px 12px; border-radius: 100px; cursor: pointer; transition: all 0.2s; }
+    .logout-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+    h1 { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; margin-bottom: 6px; }
+    h1 span { color: var(--accent); }
+    .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 32px; }
+    .qr-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 20px;
+      padding: 36px; display: inline-block; position: relative; overflow: hidden;
+    }
+    .qr-card::before { content: ''; position: absolute; top:0;left:0;right:0;height:1px; background: linear-gradient(90deg,transparent,rgba(200,241,53,0.3),transparent); }
+    #qrcode { display: flex; align-items: center; justify-content: center; }
+    #qrcode canvas, #qrcode img { border-radius: 8px; }
+
+    /* Timer ring */
+    .timer-wrap { margin-top: 28px; display: flex; align-items: center; justify-content: center; gap: 16px; }
+    .ring { position: relative; width: 56px; height: 56px; }
+    .ring svg { transform: rotate(-90deg); }
+    .ring-bg { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 4; }
+    .ring-fill { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+    .ring-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; color: var(--accent); }
+    .timer-label { font-size: 13px; color: var(--muted); text-align: left; line-height: 1.6; }
+    .timer-label strong { color: var(--text); display: block; font-family: 'Syne', sans-serif; }
+
+    /* Refresh flash */
+    @keyframes flashIn { 0%{opacity:0;transform:scale(0.93);} 100%{opacity:1;transform:scale(1);} }
+    .qr-card.refresh { animation: flashIn 0.4s cubic-bezier(0.22,1,0.36,1); }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN -->
+  <div id="loginScreen">
+    <div class="login-card">
+      <div class="login-title">Admin <span>Login</span></div>
+      <div class="login-sub">Enter password to display the QR screen</div>
+      <label>Password</label>
+      <input type="password" id="adminPass" placeholder="••••••••"/>
+      <button class="login-btn" onclick="adminLogin()">Enter →</button>
+      <div class="login-error" id="loginError">❌ Wrong password</div>
+    </div>
+  </div>
+
+  <!-- QR DISPLAY -->
+  <div id="qrScreen">
+    <div class="top-bar">
+      <div class="badge">Live Attendance</div>
+      <button class="logout-btn" onclick="location.href='/admin/logout'">Sign out</button>
+    </div>
+    <h1>Scan to Mark<br/><span>Attendance</span></h1>
+    <p class="subtitle">Use your phone camera — QR refreshes automatically every 60s</p>
+    <div class="qr-card" id="qrCard">
+      <div id="qrcode"></div>
+      <div class="timer-wrap">
+        <div class="ring">
+          <svg width="56" height="56" viewBox="0 0 56 56">
+            <circle class="ring-bg" cx="28" cy="28" r="24"/>
+            <circle class="ring-fill" id="ringFill" cx="28" cy="28" r="24" stroke-dasharray="150.8" stroke-dashoffset="0"/>
+          </svg>
+          <div class="ring-num" id="ringNum">60</div>
+        </div>
+        <div class="timer-label">
+          <strong id="timerLabel">60 seconds remaining</strong>
+          QR auto-refreshes when timer ends
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const CIRCUMFERENCE = 2 * Math.PI * 24; // ~150.8
+    let pollInterval;
+    let qr = null;
+
+    async function adminLogin() {
+      const pass = document.getElementById('adminPass').value;
+      const err  = document.getElementById('loginError');
+      err.style.display = 'none';
+      const res  = await fetch('/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pass })
+      });
+      if (res.ok) {
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('qrScreen').style.display    = 'block';
+        startQrDisplay();
+      } else {
+        err.style.display = 'block';
+      }
+    }
+
+    document.getElementById('adminPass').addEventListener('keydown', e => {
+      if (e.key === 'Enter') adminLogin();
+    });
+
+    let lastToken = null;
+
+    async function fetchAndRender() {
+      const res  = await fetch('/admin/token');
+      if (res.status === 401) { location.reload(); return; }
+      const data = await res.json();
+      const { token, remaining, qrUrl } = data;
+
+      // Update timer UI
+      const frac   = remaining / 60;
+      const offset = CIRCUMFERENCE * (1 - frac);
+      document.getElementById('ringFill').style.strokeDashoffset = offset;
+      document.getElementById('ringNum').textContent   = remaining;
+      document.getElementById('timerLabel').textContent = `${remaining} second${remaining !== 1 ? 's' : ''} remaining`;
+
+      // Only re-render QR if token changed
+      if (token !== lastToken) {
+        lastToken = token;
+        const card = document.getElementById('qrCard');
+        card.classList.remove('refresh');
+        void card.offsetWidth; // reflow
+        card.classList.add('refresh');
+
+        const box = document.getElementById('qrcode');
+        box.innerHTML = '';
+        new QRCode(box, {
+          text:           qrUrl,
+          width:          220,
+          height:         220,
+          colorDark:      '#000000',
+          colorLight:     '#ffffff',
+          correctLevel:   QRCode.CorrectLevel.H,
+        });
+      }
+    }
+
+    function startQrDisplay() {
+      fetchAndRender();
+      pollInterval = setInterval(fetchAndRender, 1000);
+    }
+  </script>
+  <script src="/footer.js"></script>
+</body>
+</html>

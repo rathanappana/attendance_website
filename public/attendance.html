@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mark Attendance</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0f; --card: #111118; --border: rgba(255,255,255,0.07);
+      --accent: #c8f135; --accent-dim: rgba(200,241,53,0.12);
+      --text: #f0f0f0; --muted: #6b6b80; --error: #ff5e5e;
+    }
+    body {
+      font-family: 'DM Mono', monospace; background: var(--bg); color: var(--text);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0;
+      background-image: linear-gradient(rgba(200,241,53,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(200,241,53,0.03) 1px, transparent 1px);
+      background-size: 40px 40px; animation: gridMove 20s linear infinite; pointer-events: none;
+    }
+    @keyframes gridMove { 0% { transform: translateY(0); } 100% { transform: translateY(40px); } }
+    .container { width: 100%; max-width: 420px; padding: 20px; position: relative; z-index: 1; animation: slideUp 0.6s cubic-bezier(0.22,1,0.36,1) both; }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--accent-dim); border: 1px solid rgba(200,241,53,0.2);
+      color: var(--accent); font-size: 11px; font-weight: 500; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 5px 12px; border-radius: 100px; margin-bottom: 24px;
+    }
+    .badge::before { content: ''; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; animation: blink 1.5s ease-in-out infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+    h1 { font-family: 'Syne', sans-serif; font-size: 36px; font-weight: 800; line-height: 1.1; margin-bottom: 8px; letter-spacing: -0.02em; }
+    h1 span { color: var(--accent); }
+    .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 36px; line-height: 1.6; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; position: relative; overflow: hidden; }
+    .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(200,241,53,0.3), transparent); }
+    .field { margin-bottom: 20px; }
+    label { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    input {
+      width: 100%; background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 16px; color: var(--text);
+      font-family: 'DM Mono', monospace; font-size: 14px; outline: none; transition: all 0.2s ease;
+    }
+    input:disabled { opacity: 0.5; cursor: not-allowed; }
+    input::placeholder { color: var(--muted); }
+    input:not(:disabled):focus { border-color: rgba(200,241,53,0.4); background: rgba(200,241,53,0.03); box-shadow: 0 0 0 3px rgba(200,241,53,0.06); }
+    .email-verified {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; color: var(--accent); margin-top: 6px; letter-spacing: 0.04em;
+    }
+    button {
+      width: 100%; background: var(--accent); color: #0a0a0f;
+      border: none; border-radius: 8px; padding: 14px;
+      font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700;
+      cursor: pointer; margin-top: 8px; transition: all 0.2s ease;
+    }
+    button:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(200,241,53,0.3); }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    button .spinner { display: none; width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.3); border-top-color: #0a0a0f; border-radius: 50%; animation: spin 0.6s linear infinite; margin: 0 auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    button.loading .btn-text { display: none; }
+    button.loading .spinner { display: block; }
+    .toast { display: none; align-items: center; gap: 10px; margin-top: 16px; padding: 14px 16px; border-radius: 8px; font-size: 13px; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+    .toast.success { display: flex; background: rgba(200,241,53,0.08); border: 1px solid rgba(200,241,53,0.2); color: var(--accent); }
+    .toast.error { display: flex; background: rgba(255,94,94,0.08); border: 1px solid rgba(255,94,94,0.2); color: var(--error); }
+    .logout { text-align: center; margin-top: 20px; font-size: 12px; color: var(--muted); }
+    .logout a { color: var(--muted); text-decoration: underline; cursor: pointer; }
+    .logout a:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="badge">Attendance Portal</div>
+    <h1>Mark Your<br/><span>Attendance</span></h1>
+    <p class="subtitle">Your email is verified via Google. Just confirm your name and submit.</p>
+
+    <div class="card">
+      <div class="field">
+        <label>Email Address</label>
+        <input type="email" id="email" disabled placeholder="Loading..."/>
+        <div class="email-verified">✅ &nbsp;Verified via Google — cannot be changed</div>
+      </div>
+      <div class="field">
+        <label>Full Name</label>
+        <input type="text" id="name" placeholder="Your full name"/>
+      </div>
+
+      <button id="submitBtn" onclick="submitAttendance()">
+        <span class="btn-text">Mark Attendance →</span>
+        <div class="spinner"></div>
+      </button>
+
+      <div class="toast" id="toast"></div>
+    </div>
+
+    <div class="logout">
+      Not you? <a href="/logout">Sign out</a>
+    </div>
+  </div>
+
+  <script>
+    // Load the logged-in user's info on page load
+    window.addEventListener('load', async () => {
+      try {
+        const res  = await fetch('/me');
+        const user = await res.json();
+        document.getElementById('email').value = user.email;
+        document.getElementById('name').value  = user.name;
+      } catch {
+        window.location.href = '/';
+      }
+    });
+
+    async function submitAttendance() {
+      const name  = document.getElementById('name').value.trim();
+      const btn   = document.getElementById('submitBtn');
+      const toast = document.getElementById('toast');
+
+      toast.className  = 'toast';
+      toast.textContent = '';
+
+      if (!name) {
+        toast.className  = 'toast error';
+        toast.textContent = '⚠️  Please enter your name.';
+        return;
+      }
+
+      btn.classList.add('loading');
+      btn.disabled = true;
+
+      try {
+        const res  = await fetch('/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          toast.className  = 'toast success';
+          toast.textContent = '✅  Attendance marked successfully!';
+          btn.disabled = true; // prevent double submit
+          btn.classList.remove('loading');
+          btn.textContent = 'Already Submitted ✓';
+        } else if (res.status === 409) {
+          toast.className  = 'toast error';
+          toast.textContent = '⚠️  ' + data.error;
+        } else {
+          toast.className  = 'toast error';
+          toast.textContent = '❌  ' + (data.error || 'Something went wrong.');
+        }
+      } catch {
+        toast.className  = 'toast error';
+        toast.textContent = '❌  Could not connect to server.';
+      } finally {
+        if (!btn.textContent.includes('Already')) {
+          btn.classList.remove('loading');
+          btn.disabled = false;
+        }
+      }
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') submitAttendance();
+    });
+  </script>
+  <script src="/footer.js"></script>
+</body>
+</html>
