@@ -68,6 +68,7 @@ Server runs at `http://localhost:3000`
 ## Access the Website
 
 ### Production
+Please tunnel your localhost hosted on 3000 port to your production website using tunnel
 Visit: `https://isea.rathanappana.com`
 
 ### Local / SSH Testing — Port Forwarding
@@ -133,16 +134,4 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
     }
 }
-```
-
----
-
-## .gitignore (add before first commit)
-
-```
-node_modules/
-.env
-credentials.json
-o_auth_credentials.json
-totp-setup-qr.png
 ```
