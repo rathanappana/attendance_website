@@ -4,7 +4,8 @@ const settings = require('../settings');
 const { requireLogin } = require('../middleware/auth');
 const { isTokenValid, getTokenData } = require('../services/token');
 const { checkDuplicate, ensureSheetExists, appendToSheet } = require('../services/sheets');
-const { isWithinVenue } = require('../services/geofence');
+const { isWithinVenue }         = require('../services/geofence');
+const { markAttendanceInMaster } = require('../services/masterSheet');
 
 const router = express.Router();
 
@@ -69,6 +70,12 @@ router.post('/submit', requireLogin, async (req, res) => {
     await appendToSheet(sheetName, email, name);
     tokenData.usedBy.add(email);
     console.log(`✅ [${sheetName}] ${email} (${name})`);
+
+    // Update Master pivot — non-blocking so slot tab write is already safe
+    markAttendanceInMaster(email, tokenData.label).catch(err =>
+      console.error('❌ Master update failed:', err.message)
+    );
+
     res.json({ success: true });
   } catch (err) {
     console.error('❌ Sheets Error:', err.message);

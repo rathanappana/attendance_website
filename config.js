@@ -1,7 +1,6 @@
 const config = {
-  googleClientId:      process.env.GOOGLE_CLIENT_ID,
-  googleClientSecret:  process.env.GOOGLE_CLIENT_SECRET,
-  spreadsheetId:       process.env.SPREADSHEET_ID,
+  oauthFile:       process.env.GOOGLE_OAUTH_FILE || 'o_auth_credentials.json',
+  spreadsheetId:   process.env.SPREADSHEET_ID,
   adminPassword:       process.env.ADMIN_PASSWORD,
   totpSecret:          process.env.TOTP_SECRET,
   baseUrl:             process.env.BASE_URL,

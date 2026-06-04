@@ -8,6 +8,9 @@ const {
   generateToken, setActiveSlot, getActiveSlot, getCurrentToken, clearSession,
   TOKEN_VALIDITY_MS,
 } = require('../services/token');
+const {
+  getAttendeesForAdmin, markRegistrationInMaster,
+} = require('../services/masterSheet');
 
 const router = express.Router();
 
@@ -71,6 +74,29 @@ router.get('/admin/token', requireAdmin, (req, res) => {
   const remaining = Math.max(0, Math.ceil((TOKEN_VALIDITY_MS - elapsed) / 1000));
   const qrUrl     = `${config.baseUrl}/attend?token=${token.token}`;
   res.json({ token: token.token, remaining, qrUrl, slot: activeSlot });
+});
+
+// ── REGISTRATION ──────────────────────────────────────────
+router.get('/admin/attendees', requireAdmin, async (req, res) => {
+  try {
+    const attendees = await getAttendeesForAdmin();
+    res.json({ attendees });
+  } catch (err) {
+    console.error('❌ Attendees fetch failed:', err.message);
+    res.status(500).json({ error: 'Failed to load attendees.' });
+  }
+});
+
+router.post('/admin/register', requireAdmin, async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'email required' });
+  try {
+    await markRegistrationInMaster(email);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Registration failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

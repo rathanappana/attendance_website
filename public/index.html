@@ -89,6 +89,47 @@
     .timer-label { font-size: 13px; color: var(--muted); text-align: left; line-height: 1.6; }
     .timer-label strong { color: var(--text); display: block; font-family: 'Syne', sans-serif; }
     .qr-card.refresh { animation: flashIn 0.4s cubic-bezier(0.22,1,0.36,1); }
+
+    /* ── REGISTRATION SCREEN ── */
+    #regScreen { width: 100%; max-width: 540px; }
+    .reg-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .reg-header h2 { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; flex: 1; }
+    .reg-header h2 span { color: var(--accent); }
+    .reg-search {
+      width: 100%; background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px; color: var(--text);
+      font-family: 'DM Mono', monospace; font-size: 13px; outline: none;
+      margin-bottom: 14px; transition: border-color 0.2s;
+    }
+    .reg-search:focus { border-color: rgba(200,241,53,0.4); }
+    .reg-filter { display: flex; gap: 8px; margin-bottom: 16px; }
+    .filter-btn {
+      font-family: 'DM Mono', monospace; font-size: 11px; padding: 5px 14px;
+      border-radius: 100px; border: 1px solid var(--border); background: none;
+      color: var(--muted); cursor: pointer; transition: all 0.15s;
+    }
+    .filter-btn.active { background: var(--accent-dim); border-color: rgba(200,241,53,0.3); color: var(--accent); }
+    .attendee-list { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; padding-right: 4px; }
+    .attendee-row {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px;
+    }
+    .attendee-info { flex: 1; min-width: 0; }
+    .attendee-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .attendee-email { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .reg-badge { font-size: 10px; color: var(--accent); background: var(--accent-dim); border: 1px solid rgba(200,241,53,0.2); padding: 3px 10px; border-radius: 100px; white-space: nowrap; }
+    .reg-btn {
+      font-family: 'DM Mono', monospace; font-size: 11px; padding: 5px 14px;
+      border-radius: 100px; border: 1px solid rgba(200,241,53,0.3);
+      background: var(--accent-dim); color: var(--accent); cursor: pointer; white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .reg-btn:hover { background: rgba(200,241,53,0.2); }
+    .reg-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .reg-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 32px 0; }
+    .reg-stats { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+    .reg-stats span { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -119,7 +160,25 @@
         </div>
       </div>
       <button class="primary-btn" onclick="activateSlot()">Generate QR →</button>
+      <button class="ghost-btn" style="width:100%;margin-top:10px;" onclick="openRegistration()">Registration →</button>
     </div>
+  </div>
+
+  <!-- SCREEN 4: REGISTRATION -->
+  <div class="screen" id="regScreen">
+    <div class="reg-header">
+      <button class="ghost-btn" onclick="showScreen('slotScreen')">← Back</button>
+      <h2>Registration <span>Panel</span></h2>
+      <button class="ghost-btn" onclick="loadAttendees()">↺ Refresh</button>
+    </div>
+    <input class="reg-search" id="regSearch" placeholder="Search by name or email…" oninput="renderAttendees()"/>
+    <div class="reg-filter">
+      <button class="filter-btn active" id="filterAll"          onclick="setFilter('all')">All</button>
+      <button class="filter-btn"        id="filterUnregistered" onclick="setFilter('unregistered')">Unregistered</button>
+      <button class="filter-btn"        id="filterRegistered"   onclick="setFilter('registered')">Registered</button>
+    </div>
+    <div class="reg-stats" id="regStats"></div>
+    <div class="attendee-list" id="attendeeList"></div>
   </div>
 
   <!-- SCREEN 3: QR DISPLAY -->
@@ -232,6 +291,100 @@
       document.getElementById('qrcode').innerHTML = '';
       showScreen('slotScreen');
     }
+
+    // ── REGISTRATION ───────────────────────────────────────
+    let allAttendees  = [];
+    let activeFilter  = 'all';
+
+    async function openRegistration() {
+      showScreen('regScreen');
+      await loadAttendees();
+    }
+
+    async function loadAttendees() {
+      document.getElementById('attendeeList').innerHTML = '<div class="reg-empty">Loading…</div>';
+      try {
+        const res  = await fetch('/admin/attendees');
+        if (res.status === 401) { location.reload(); return; }
+        const data = await res.json();
+        allAttendees = data.attendees || [];
+        renderAttendees();
+      } catch (e) {
+        document.getElementById('attendeeList').innerHTML = '<div class="reg-empty">Failed to load attendees.</div>';
+      }
+    }
+
+    function setFilter(f) {
+      activeFilter = f;
+      ['All','Unregistered','Registered'].forEach(n => {
+        const el = document.getElementById('filter' + n);
+        el.classList.toggle('active', f === n.toLowerCase());
+      });
+      renderAttendees();
+    }
+
+    function renderAttendees() {
+      const q    = document.getElementById('regSearch').value.toLowerCase().trim();
+      const list = document.getElementById('attendeeList');
+
+      let filtered = allAttendees.filter(a => {
+        if (activeFilter === 'registered'   && !a.registered) return false;
+        if (activeFilter === 'unregistered' &&  a.registered) return false;
+        if (q && !a.name.toLowerCase().includes(q) && !a.email.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      const total      = allAttendees.length;
+      const regCount   = allAttendees.filter(a => a.registered).length;
+      document.getElementById('regStats').innerHTML =
+        `Showing <span>${filtered.length}</span> of ${total} &nbsp;·&nbsp; <span>${regCount}</span> registered`;
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<div class="reg-empty">No attendees match.</div>';
+        return;
+      }
+
+      list.innerHTML = filtered.map(a => `
+        <div class="attendee-row" id="row-${CSS.escape(a.email)}">
+          <div class="attendee-info">
+            <div class="attendee-name">${escHtml(a.name)}</div>
+            <div class="attendee-email">${escHtml(a.email)}</div>
+          </div>
+          ${a.registered
+            ? '<span class="reg-badge">✓ Registered</span>'
+            : `<button class="reg-btn" onclick="registerStudent('${escAttr(a.email)}', this)">Register</button>`
+          }
+        </div>
+      `).join('');
+    }
+
+    async function registerStudent(email, btn) {
+      btn.disabled    = true;
+      btn.textContent = 'Registering…';
+      try {
+        const res = await fetch('/admin/register', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ email }),
+        });
+        if (res.ok) {
+          const a = allAttendees.find(a => a.email === email);
+          if (a) a.registered = true;
+          renderAttendees();
+        } else {
+          const err = await res.json();
+          btn.disabled    = false;
+          btn.textContent = 'Register';
+          alert('Error: ' + (err.error || 'unknown'));
+        }
+      } catch (e) {
+        btn.disabled    = false;
+        btn.textContent = 'Register';
+      }
+    }
+
+    function escHtml(s)  { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function escAttr(s)  { return s.replace(/'/g,"\\'"); }
 
     // ── QR DISPLAY ─────────────────────────────────────────
     async function fetchAndRender() {
