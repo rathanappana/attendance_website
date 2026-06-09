@@ -5,7 +5,7 @@ const { requireLogin } = require('../middleware/auth');
 const { isTokenValid, getTokenData } = require('../services/token');
 const { checkDuplicate, ensureSheetExists, appendToSheet } = require('../services/sheets');
 const { isWithinVenue }         = require('../services/geofence');
-const { markAttendanceInMaster } = require('../services/masterSheet');
+const { markAttendanceInMaster, resolveToCanonical } = require('../services/masterSheet');
 
 const router = express.Router();
 
@@ -28,7 +28,7 @@ router.get('/me', requireLogin, (req, res) => {
 });
 
 router.post('/submit', requireLogin, async (req, res) => {
-  const email = req.user.email;
+  const email = resolveToCanonical(req.user.email);  // alt email → primary
   const name  = req.body.name?.trim() || req.user.name;
   const token = req.user.pendingToken;
 

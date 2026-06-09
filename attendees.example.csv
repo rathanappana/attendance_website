@@ -1,4 +1,4 @@
-name,email
-Alice Sharma,alice@iith.ac.in
-Bob Reddy,bob@iith.ac.in
-Carol Nair,carol@iith.ac.in
+name,email,alt_email
+Alice Sharma,alice@iith.ac.in,alice@gmail.com
+Bob Reddy,bob@iith.ac.in,
+Carol Nair,carol@iith.ac.in,carol.personal@gmail.com

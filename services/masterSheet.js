@@ -36,24 +36,41 @@ function buildHeader() {
   return ['Email', 'Name', 'Registered', ...SLOTS.map(s => s.label), 'Total'];
 }
 
+// altEmail.lower → primaryEmail (original case) — populated by readAttendeesCSV
+const emailAliasMap = new Map();
+
+// If email is a known alt, returns the primary email. Otherwise returns email unchanged.
+function resolveToCanonical(email) {
+  return emailAliasMap.get(email.toLowerCase().trim()) || email;
+}
+
 function readAttendeesCSV() {
   const filePath = path.join(__dirname, '..', 'attendees.csv');
   if (!fs.existsSync(filePath)) return null;
 
-  const lines    = fs.readFileSync(filePath, 'utf8').trim().split('\n');
-  const header   = lines[0].split(',').map(h => h.trim().toLowerCase());
-  const nameIdx  = header.indexOf('name');
-  const emailIdx = header.indexOf('email');
+  const lines       = fs.readFileSync(filePath, 'utf8').trim().split('\n');
+  const header      = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const nameIdx     = header.indexOf('name');
+  const emailIdx    = header.indexOf('email');
+  const altEmailIdx = header.indexOf('alt_email');
 
   if (nameIdx === -1 || emailIdx === -1) {
     console.warn('⚠️  attendees.csv missing "name" or "email" column');
     return [];
   }
 
+  emailAliasMap.clear();
+
   return lines.slice(1)
     .map(line => {
-      const parts = line.split(',');
-      return { email: parts[emailIdx]?.trim(), name: parts[nameIdx]?.trim() };
+      const parts    = line.split(',');
+      const email    = parts[emailIdx]?.trim();
+      const name     = parts[nameIdx]?.trim();
+      const altEmail = altEmailIdx !== -1 ? parts[altEmailIdx]?.trim() : '';
+      if (email && altEmail) {
+        emailAliasMap.set(altEmail.toLowerCase(), email);
+      }
+      return { email, name };
     })
     .filter(a => a.email && a.name);
 }
@@ -86,9 +103,9 @@ async function rebuildMaster(sheets) {
       });
       const rows = (result.data.values || []).slice(1);
       for (const row of rows) {
-        const email = (row[0] || '').toLowerCase().trim();
-        const name  = (row[1] || '').trim();
-        if (!email) continue;
+        const raw   = (row[0] || '').trim();
+        if (!raw) continue;
+        const email = resolveToCanonical(raw).toLowerCase();  // alt → primary
 
         if (!slotAttendance.has(email)) slotAttendance.set(email, new Set());
         slotAttendance.get(email).add(slot.label);
@@ -390,14 +407,14 @@ async function getSlotAttendanceForAdmin(slotLabel, sheetName) {
       range:         `${sheetName}!B:B`,
     });
     (slotResult.data.values || []).slice(1).forEach(r => {
-      if (r[0]) attendedEmails.add(r[0].toLowerCase().trim());
+      if (r[0]) attendedEmails.add(resolveToCanonical(r[0]).toLowerCase().trim());
     });
   } catch (e) { /* slot tab not created yet — no one attended */ }
 
   return masterRows.map(row => ({
     email:    (row[0] || '').trim(),
     name:     (row[1] || '').trim(),
-    attended: attendedEmails.has((row[0] || '').toLowerCase().trim()),
+    attended: attendedEmails.has(resolveToCanonical(row[0] || '').toLowerCase().trim()),
   }));
 }
 
@@ -407,4 +424,5 @@ module.exports = {
   getSlotAttendanceForAdmin,
   markRegistrationInMaster,
   markAttendanceInMaster,
+  resolveToCanonical,
 };
