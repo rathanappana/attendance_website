@@ -370,9 +370,41 @@ async function markRegistrationInMaster(email) {
   console.log(`✅ Registered: ${name} (${email})`);
 }
 
+// Returns all students + attended status for a given slot.
+// Student list from Master (= CSV). Attended status from slot tab directly (source of truth).
+async function getSlotAttendanceForAdmin(slotLabel, sheetName) {
+  const sheets = await getSheetsClient();
+
+  // 1. Student list from Master
+  const masterResult = await sheets.spreadsheets.values.get({
+    spreadsheetId: config.spreadsheetId,
+    range:         `${MASTER_TAB}!A:B`,
+  });
+  const masterRows = (masterResult.data.values || []).slice(1).filter(r => r[0]);
+
+  // 2. Who actually attended — read slot tab B column (email)
+  const attendedEmails = new Set();
+  try {
+    const slotResult = await sheets.spreadsheets.values.get({
+      spreadsheetId: config.spreadsheetId,
+      range:         `${sheetName}!B:B`,
+    });
+    (slotResult.data.values || []).slice(1).forEach(r => {
+      if (r[0]) attendedEmails.add(r[0].toLowerCase().trim());
+    });
+  } catch (e) { /* slot tab not created yet — no one attended */ }
+
+  return masterRows.map(row => ({
+    email:    (row[0] || '').trim(),
+    name:     (row[1] || '').trim(),
+    attended: attendedEmails.has((row[0] || '').toLowerCase().trim()),
+  }));
+}
+
 module.exports = {
   initializeSpreadsheet,
   getAttendeesForAdmin,
+  getSlotAttendanceForAdmin,
   markRegistrationInMaster,
   markAttendanceInMaster,
 };

@@ -181,11 +181,30 @@
     <div class="attendee-list" id="attendeeList"></div>
   </div>
 
+  <!-- SCREEN 5: MANUAL ATTENDANCE -->
+  <div class="screen" id="attendScreen">
+    <div class="reg-header">
+      <button class="ghost-btn" onclick="showScreen('qrScreen')">← QR</button>
+      <h2>Manual <span>Attendance</span></h2>
+      <button class="ghost-btn" onclick="loadSlotAttendance()">↺ Refresh</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Slot: <span id="attendSlotLabel" style="color:var(--accent)"></span></div>
+    <input class="reg-search" id="attendSearch" placeholder="Search by name or email…" oninput="renderSlotAttendance()"/>
+    <div class="reg-filter">
+      <button class="filter-btn active" id="attendFilterAll"     onclick="setAttendFilter('all')">All</button>
+      <button class="filter-btn"        id="attendFilterAbsent"  onclick="setAttendFilter('absent')">Absent</button>
+      <button class="filter-btn"        id="attendFilterPresent" onclick="setAttendFilter('present')">Present</button>
+    </div>
+    <div class="reg-stats" id="attendStats"></div>
+    <div class="attendee-list" id="attendList"></div>
+  </div>
+
   <!-- SCREEN 3: QR DISPLAY -->
   <div class="screen" id="qrScreen">
     <div class="top-bar">
       <div class="badge">Live Attendance</div>
       <div style="display:flex;gap:8px;">
+        <button class="ghost-btn" onclick="openSlotAttendance()">Attendance</button>
         <button class="ghost-btn" onclick="changeSlot()">Change Slot</button>
         <button class="ghost-btn" onclick="location.href='/admin/logout'">Sign out</button>
       </div>
@@ -385,6 +404,104 @@
 
     function escHtml(s)  { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
     function escAttr(s)  { return s.replace(/'/g,"\\'"); }
+
+    // ── MANUAL ATTENDANCE ──────────────────────────────────
+    let allSlotAttendees = [];
+    let attendFilter     = 'all';
+
+    async function openSlotAttendance() {
+      showScreen('attendScreen');
+      await loadSlotAttendance();
+    }
+
+    async function loadSlotAttendance() {
+      document.getElementById('attendList').innerHTML = '<div class="reg-empty">Loading…</div>';
+      try {
+        const res = await fetch('/admin/slot-attendance');
+        if (res.status === 401) { location.reload(); return; }
+        if (!res.ok) {
+          const err = await res.json();
+          document.getElementById('attendList').innerHTML =
+            `<div class="reg-empty">${escHtml(err.error || 'Error loading data.')}</div>`;
+          return;
+        }
+        const data = await res.json();
+        allSlotAttendees = data.attendees || [];
+        document.getElementById('attendSlotLabel').textContent = data.slot || '';
+        renderSlotAttendance();
+      } catch (e) {
+        document.getElementById('attendList').innerHTML = '<div class="reg-empty">Failed to load.</div>';
+      }
+    }
+
+    function setAttendFilter(f) {
+      attendFilter = f;
+      ['All','Absent','Present'].forEach(n => {
+        document.getElementById('attendFilter' + n)
+          .classList.toggle('active', f === n.toLowerCase());
+      });
+      renderSlotAttendance();
+    }
+
+    function renderSlotAttendance() {
+      const q    = document.getElementById('attendSearch').value.toLowerCase().trim();
+      const list = document.getElementById('attendList');
+
+      const filtered = allSlotAttendees.filter(a => {
+        if (attendFilter === 'present' && !a.attended) return false;
+        if (attendFilter === 'absent'  &&  a.attended) return false;
+        if (q && !a.name.toLowerCase().includes(q) && !a.email.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      const total        = allSlotAttendees.length;
+      const presentCount = allSlotAttendees.filter(a => a.attended).length;
+      document.getElementById('attendStats').innerHTML =
+        `Showing <span>${filtered.length}</span> of ${total} &nbsp;·&nbsp; <span>${presentCount}</span> present`;
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<div class="reg-empty">No attendees match.</div>';
+        return;
+      }
+
+      list.innerHTML = filtered.map(a => `
+        <div class="attendee-row">
+          <div class="attendee-info">
+            <div class="attendee-name">${escHtml(a.name)}</div>
+            <div class="attendee-email">${escHtml(a.email)}</div>
+          </div>
+          ${a.attended
+            ? '<span class="reg-badge">✓ Present</span>'
+            : `<button class="reg-btn" onclick="markManual('${escAttr(a.email)}', this)">Mark Present</button>`
+          }
+        </div>
+      `).join('');
+    }
+
+    async function markManual(email, btn) {
+      btn.disabled    = true;
+      btn.textContent = 'Marking…';
+      try {
+        const res = await fetch('/admin/mark-attendance', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ email }),
+        });
+        if (res.ok) {
+          const a = allSlotAttendees.find(a => a.email === email);
+          if (a) a.attended = true;
+          renderSlotAttendance();
+        } else {
+          const err = await res.json();
+          btn.disabled    = false;
+          btn.textContent = 'Mark Present';
+          alert('Error: ' + (err.error || 'unknown'));
+        }
+      } catch (e) {
+        btn.disabled    = false;
+        btn.textContent = 'Mark Present';
+      }
+    }
 
     // ── QR DISPLAY ─────────────────────────────────────────
     async function fetchAndRender() {

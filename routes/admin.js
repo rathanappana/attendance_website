@@ -9,8 +9,10 @@ const {
   TOKEN_VALIDITY_MS,
 } = require('../services/token');
 const {
-  getAttendeesForAdmin, markRegistrationInMaster,
+  getAttendeesForAdmin, getSlotAttendanceForAdmin,
+  markRegistrationInMaster, markAttendanceInMaster,
 } = require('../services/masterSheet');
+const { checkDuplicate, appendToSheet } = require('../services/sheets');
 
 const router = express.Router();
 
@@ -95,6 +97,47 @@ router.post('/admin/register', requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('❌ Registration failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── MANUAL ATTENDANCE ─────────────────────────────────────
+router.get('/admin/slot-attendance', requireAdmin, async (req, res) => {
+  const activeSlot = getActiveSlot();
+  if (!activeSlot) return res.status(400).json({ error: 'no_slot' });
+  try {
+    const attendees = await getSlotAttendanceForAdmin(activeSlot.label, activeSlot.sheet);
+    res.json({ attendees, slot: activeSlot.label });
+  } catch (err) {
+    console.error('❌ Slot attendance fetch failed:', err.message);
+    res.status(500).json({ error: 'Failed to load slot attendance.' });
+  }
+});
+
+router.post('/admin/mark-attendance', requireAdmin, async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'email required' });
+
+  const activeSlot = getActiveSlot();
+  if (!activeSlot) return res.status(400).json({ error: 'no_slot' });
+
+  try {
+    const isDuplicate = await checkDuplicate(email, activeSlot.sheet);
+    if (isDuplicate) return res.status(409).json({ error: 'already_marked' });
+
+    const masterAttendees = await getAttendeesForAdmin();
+    const student = masterAttendees.find(a => a.email.toLowerCase() === email.toLowerCase());
+    const name = student ? student.name : '';
+
+    await appendToSheet(activeSlot.sheet, email, name);
+    markAttendanceInMaster(email, activeSlot.label).catch(e =>
+      console.error('⚠️  markAttendanceInMaster failed (non-fatal):', e.message)
+    );
+
+    console.log(`👆 Manual attendance: ${email} → ${activeSlot.label}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Manual attendance failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
