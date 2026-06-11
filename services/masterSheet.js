@@ -75,6 +75,39 @@ function readAttendeesCSV() {
     .filter(a => a.email && a.name);
 }
 
+function csvField(value) {
+  const v = (value || '').trim();
+  if (v.includes(',') || v.includes('"') || v.includes('\n')) {
+    return '"' + v.replace(/"/g, '""') + '"';
+  }
+  return v;
+}
+
+// Appends a new student to attendees.csv. Throws if email/alt_email already used.
+function addAttendeeToCSV(name, email, altEmail) {
+  name     = (name     || '').trim();
+  email    = (email    || '').trim();
+  altEmail = (altEmail || '').trim();
+  if (!name || !email) throw new Error('Name and email are required');
+
+  const filePath  = path.join(__dirname, '..', 'attendees.csv');
+  const existing  = readAttendeesCSV() || [];
+  const emailLow  = email.toLowerCase();
+  const altLow    = altEmail.toLowerCase();
+
+  for (const a of existing) {
+    if (a.email.toLowerCase() === emailLow || (altLow && a.email.toLowerCase() === altLow)) {
+      throw new Error(`"${email}" is already in attendees.csv`);
+    }
+  }
+  if (emailAliasMap.has(emailLow) || (altLow && emailAliasMap.has(altLow))) {
+    throw new Error(`"${email}" is already in attendees.csv (as an alt email)`);
+  }
+
+  fs.appendFileSync(filePath, `\n${csvField(name)},${csvField(email)},${csvField(altEmail)}`);
+  console.log(`📝 Added to attendees.csv: ${name} <${email}>`);
+}
+
 // Rebuilds Master completely from:
 //   CSV (attendee list) + slot tabs (audit) + Registration tab (audit)
 // Called every startup — idempotent, heals any prior inconsistency.
@@ -286,6 +319,51 @@ async function initializeSpreadsheet() {
   console.log('✅ Spreadsheet ready');
 }
 
+// Appends any CSV rows not already in Master. Never touches existing rows —
+// safe to run while server is live and students are actively marking attendance.
+async function addNewAttendeesFromCSV() {
+  const sheets = await getSheetsClient();
+  const csvAttendees = readAttendeesCSV() || [];
+
+  const result = await sheets.spreadsheets.values.get({
+    spreadsheetId: config.spreadsheetId,
+    range:         `${MASTER_TAB}!A:A`,
+  });
+  const existingRows   = result.data.values || [];
+  const existingEmails = new Set(
+    existingRows.slice(1).map(r => (r[0] || '').toLowerCase().trim()).filter(Boolean)
+  );
+  const startRow = existingRows.length + 1;
+
+  const newAttendees = csvAttendees.filter(a => !existingEmails.has(a.email.toLowerCase().trim()));
+  if (newAttendees.length === 0) return { added: 0, names: [] };
+
+  const newRows = newAttendees.map(a => [a.email.trim(), a.name.trim(), '', ...SLOTS.map(() => ''), '']);
+  await sheets.spreadsheets.values.append({
+    spreadsheetId:    config.spreadsheetId,
+    range:            `${MASTER_TAB}!A1`,
+    valueInputOption: 'USER_ENTERED',
+    resource:         { values: newRows },
+  });
+
+  const firstSlotCol = columnLetter(COL_SLOT_START);
+  const lastSlotCol  = columnLetter(COL_SLOT_START + SLOTS.length - 1);
+  const totalCol     = columnLetter(COL_SLOT_START + SLOTS.length);
+  const totalFormulas = newAttendees.map((_, i) => {
+    const row = startRow + i;
+    return [`=COUNTIF(${firstSlotCol}${row}:${lastSlotCol}${row},"✓")`];
+  });
+  await sheets.spreadsheets.values.update({
+    spreadsheetId:    config.spreadsheetId,
+    range:            `${MASTER_TAB}!${totalCol}${startRow}`,
+    valueInputOption: 'USER_ENTERED',
+    resource:         { values: totalFormulas },
+  });
+
+  console.log(`➕ Added ${newAttendees.length} new attendee(s) from CSV`);
+  return { added: newAttendees.length, names: newAttendees.map(a => a.name) };
+}
+
 // Real-time: mark ✓ in Master immediately after student submits.
 // If this fails, next startup's rebuildMaster will catch it from slot tab audit.
 async function markAttendanceInMaster(email, slotLabel) {
@@ -425,4 +503,6 @@ module.exports = {
   markRegistrationInMaster,
   markAttendanceInMaster,
   resolveToCanonical,
+  addNewAttendeesFromCSV,
+  addAttendeeToCSV,
 };

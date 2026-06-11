@@ -11,6 +11,7 @@ const {
 const {
   getAttendeesForAdmin, getSlotAttendanceForAdmin,
   markRegistrationInMaster, markAttendanceInMaster,
+  addNewAttendeesFromCSV, addAttendeeToCSV,
 } = require('../services/masterSheet');
 const { checkDuplicate, appendToSheet } = require('../services/sheets');
 
@@ -139,6 +140,30 @@ router.post('/admin/mark-attendance', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('❌ Manual attendance failed:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Adds new rows from attendees.csv to Master without restart. Append-only —
+// does not touch existing rows, safe to run during a live session.
+router.post('/admin/reload-attendees', requireAdmin, async (req, res) => {
+  try {
+    const result = await addNewAttendeesFromCSV();
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Reload attendees failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Adds a new student: writes to attendees.csv then syncs into Master (append-only).
+router.post('/admin/add-attendee', requireAdmin, async (req, res) => {
+  const { name, email, altEmail } = req.body;
+  try {
+    addAttendeeToCSV(name, email, altEmail || '');
+    const result = await addNewAttendeesFromCSV();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
