@@ -5,7 +5,7 @@ const { requireLogin } = require('../middleware/auth');
 const { isTokenValid, getTokenData } = require('../services/token');
 const { checkDuplicate, ensureSheetExists, appendToSheet } = require('../services/sheets');
 const { isWithinVenue }         = require('../services/geofence');
-const { markAttendanceInMaster, resolveToCanonical } = require('../services/masterSheet');
+const { markAttendanceInMaster, resolveToCanonical, getStudentAttendance } = require('../services/masterSheet');
 
 const router = express.Router();
 
@@ -24,7 +24,21 @@ router.get('/me', requireLogin, (req, res) => {
     name:             req.user.name,
     slot:             tokenData ? tokenData.label : null,
     geofencingEnabled: settings.geofencingEnabled,
+    attendanceViewEnabled: settings.attendanceViewEnabled,
   });
+});
+
+router.get('/my-attendance', requireLogin, async (req, res) => {
+  if (!settings.attendanceViewEnabled) return res.status(403).json({ error: 'feature_disabled' });
+  try {
+    const email = resolveToCanonical(req.user.email);
+    const data  = await getStudentAttendance(email);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+    res.json(data);
+  } catch (err) {
+    console.error('❌ My-attendance fetch failed:', err.message);
+    res.status(500).json({ error: 'Failed to load attendance.' });
+  }
 });
 
 router.post('/submit', requireLogin, async (req, res) => {

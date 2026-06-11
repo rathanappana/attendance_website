@@ -71,6 +71,19 @@
     .logout { text-align: center; margin-top: 20px; font-size: 12px; color: var(--muted); }
     .logout a { color: var(--muted); text-decoration: underline; cursor: pointer; }
     .logout a:hover { color: var(--text); }
+    .view-btn {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      margin-top: 14px;
+    }
+    .view-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); box-shadow: none; transform: none; }
+    .slot-list { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }
+    .slot-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 9px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px;
+    }
+    .slot-row.done { color: var(--accent); border-color: rgba(200,241,53,0.2); background: var(--accent-dim); }
+    .slot-total { margin-top: 12px; font-size: 12px; color: var(--muted); text-align: center; }
+    .slot-total span { color: var(--accent); font-weight: 700; }
   </style>
 </head>
 <body>
@@ -96,6 +109,9 @@
       </button>
 
       <div class="toast" id="toast"></div>
+
+      <button id="viewAttendanceBtn" class="view-btn" style="display:none;" onclick="loadMyAttendance()">View My Attendance</button>
+      <div id="attendanceResult" style="display:none;"></div>
     </div>
 
     <div class="logout">
@@ -111,10 +127,40 @@
         const user = await res.json();
         document.getElementById('email').value = user.email;
         document.getElementById('name').value  = user.name;
+        if (user.attendanceViewEnabled) {
+          document.getElementById('viewAttendanceBtn').style.display = 'block';
+        }
       } catch {
         window.location.href = '/';
       }
     });
+
+    async function loadMyAttendance() {
+      const box = document.getElementById('attendanceResult');
+      box.style.display = 'block';
+      box.innerHTML = '<div class="slot-total">Loading…</div>';
+      try {
+        const res  = await fetch('/my-attendance');
+        const data = await res.json();
+        if (!res.ok) {
+          box.innerHTML = `<div class="slot-total">${
+            data.error === 'not_found'
+              ? "Your attendance record isn't set up yet — contact admin."
+              : 'Could not load attendance.'
+          }</div>`;
+          return;
+        }
+        let html = '<div class="slot-list">';
+        for (const s of data.slots) {
+          html += `<div class="slot-row ${s.attended ? 'done' : ''}"><span>${s.label}</span><span>${s.attended ? '✓' : '—'}</span></div>`;
+        }
+        html += '</div>';
+        html += `<div class="slot-total">Total: <span>${data.total} / ${data.totalSlots}</span></div>`;
+        box.innerHTML = html;
+      } catch {
+        box.innerHTML = '<div class="slot-total">Could not load attendance.</div>';
+      }
+    }
 
     async function submitAttendance() {
       const name  = document.getElementById('name').value.trim();

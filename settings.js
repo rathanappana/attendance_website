@@ -13,6 +13,14 @@ module.exports = {
   tokenGracePeriodMs: 30 * 1000,   // 30 seconds
 
 
+  // ─── STUDENT ATTENDANCE VIEW ──────────────────────────────────────────────
+  // When enabled, logged-in students can view their own per-slot attendance
+  // (✓/✗ + total) on the attendance page. Only works for students present
+  // in attendees.csv (Master sheet) — unregistered scanners can still mark
+  // attendance, they just won't see a record.
+  attendanceViewEnabled: true,
+
+
   // ─── ADMIN LOGIN MODE ─────────────────────────────────────────────────────
   // true  → admin logs in with plain password  (ADMIN_PASSWORD in .env)
   // false → admin logs in with 6-digit TOTP    (run setup.js first)

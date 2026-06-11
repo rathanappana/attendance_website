@@ -104,7 +104,18 @@ function addAttendeeToCSV(name, email, altEmail) {
     throw new Error(`"${email}" is already in attendees.csv (as an alt email)`);
   }
 
-  fs.appendFileSync(filePath, `\n${csvField(name)},${csvField(email)},${csvField(altEmail)}`);
+  // Place values by header column name — don't assume a fixed column order.
+  const header  = fs.readFileSync(filePath, 'utf8').split('\n')[0].split(',').map(h => h.trim().toLowerCase());
+  const nameIdx = header.indexOf('name');
+  const emailIdx = header.indexOf('email');
+  const altIdx  = header.indexOf('alt_email');
+
+  const row = new Array(header.length).fill('');
+  row[nameIdx]  = csvField(name);
+  row[emailIdx] = csvField(email);
+  if (altIdx !== -1) row[altIdx] = csvField(altEmail);
+
+  fs.appendFileSync(filePath, `\n${row.join(',')}`);
   console.log(`📝 Added to attendees.csv: ${name} <${email}>`);
 }
 
@@ -496,6 +507,40 @@ async function getSlotAttendanceForAdmin(slotLabel, sheetName) {
   }));
 }
 
+// Returns one student's per-slot attendance + total. null if email not in Master.
+async function getStudentAttendance(email) {
+  const sheets = await getSheetsClient();
+  const result = await sheets.spreadsheets.values.get({
+    spreadsheetId: config.spreadsheetId,
+    range:         `${MASTER_TAB}!A:ZZ`,
+  });
+  const rows = result.data.values || [];
+  if (rows.length < 2) return null;
+
+  const header    = rows[0];
+  const canonical = resolveToCanonical(email).toLowerCase().trim();
+  const row = rows.find((r, i) => i > 0 && (r[0] || '').toLowerCase().trim() === canonical);
+  if (!row) return null;
+
+  const slots = SLOTS.map((s, i) => ({
+    label:    s.label,
+    attended: (row[COL_SLOT_START + i] || '').trim() === '✓',
+  }));
+
+  const totalIndex = header.indexOf('Total');
+  const total = totalIndex !== -1
+    ? Number(row[totalIndex]) || 0
+    : slots.filter(s => s.attended).length;
+
+  return {
+    name:       (row[1] || '').trim(),
+    email:      (row[0] || '').trim(),
+    slots,
+    total,
+    totalSlots: SLOTS.length,
+  };
+}
+
 module.exports = {
   initializeSpreadsheet,
   getAttendeesForAdmin,
@@ -505,4 +550,5 @@ module.exports = {
   resolveToCanonical,
   addNewAttendeesFromCSV,
   addAttendeeToCSV,
+  getStudentAttendance,
 };
