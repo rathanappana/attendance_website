@@ -12,7 +12,7 @@ function generateToken() {
   if (!activeSlot) return null;
   previousToken = currentToken;
   currentToken  = {
-    token:     crypto.randomBytes(16).toString('hex'),
+    token:     crypto.randomBytes(8).toString('hex'),
     createdAt: Date.now(),
     usedBy:    new Set(),
     sheet:     activeSlot.sheet,
